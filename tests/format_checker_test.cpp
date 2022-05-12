@@ -8,25 +8,31 @@
 
 using namespace log4tiny;
 
-TEST(PlaceholderCounting, NoArgument) {
+struct PlaceholderCounting : testing::Test {
+  constexpr size_t count_number_of_valid_placeholders(const std::string_view& format) {
+    return parse_format_to_placeholder_matchers(format).size();
+  }
+};
+
+TEST_F(PlaceholderCounting, NoArgument) {
   EXPECT_EQ(count_number_of_valid_placeholders("Zero arguments"), 0);
   EXPECT_EQ(count_number_of_valid_placeholders(""), 0);
 }
 
-TEST(PlaceholderCounting, EscapedStartingCharacter) {
+TEST_F(PlaceholderCounting, EscapedStartingCharacter) {
   EXPECT_EQ(count_number_of_valid_placeholders("%%"), 0);
   EXPECT_EQ(count_number_of_valid_placeholders("%%u"), 0);
   EXPECT_EQ(count_number_of_valid_placeholders("something %%"), 0);
   EXPECT_EQ(count_number_of_valid_placeholders("something %% something"), 0);
 }
 
-TEST(PlaceholderCounting, SingleArgument) {
+TEST_F(PlaceholderCounting, SingleArgument) {
   EXPECT_EQ(count_number_of_valid_placeholders("%u"), 1);
   EXPECT_EQ(count_number_of_valid_placeholders("Simple %u"), 1);
   EXPECT_EQ(count_number_of_valid_placeholders("Simple %u test"), 1);
 }
 
-TEST(PlaceholderCounting, WithFlag) {
+TEST_F(PlaceholderCounting, WithFlag) {
   EXPECT_EQ(count_number_of_valid_placeholders("%-u"), 1);
   EXPECT_EQ(count_number_of_valid_placeholders("%+u"), 1);
   EXPECT_EQ(count_number_of_valid_placeholders("% u"), 1);
@@ -34,7 +40,7 @@ TEST(PlaceholderCounting, WithFlag) {
   EXPECT_EQ(count_number_of_valid_placeholders("%0u"), 1);
 }
 
-TEST(PlaceholderCounting, WithWidth) {
+TEST_F(PlaceholderCounting, WithWidth) {
   EXPECT_EQ(count_number_of_valid_placeholders("%6u"), 1);
   EXPECT_EQ(count_number_of_valid_placeholders("%35u"), 1);
   EXPECT_EQ(count_number_of_valid_placeholders("%999999u"), 1);
@@ -42,7 +48,7 @@ TEST(PlaceholderCounting, WithWidth) {
   EXPECT_EQ(count_number_of_valid_placeholders("%*u"), 2);
 }
 
-TEST(PlaceholderCounting, WithPrecision) {
+TEST_F(PlaceholderCounting, WithPrecision) {
   EXPECT_EQ(count_number_of_valid_placeholders("%.4u"), 1);
   EXPECT_EQ(count_number_of_valid_placeholders("%.941u"), 1);
   EXPECT_EQ(count_number_of_valid_placeholders("%.999999u"), 1);
@@ -50,7 +56,7 @@ TEST(PlaceholderCounting, WithPrecision) {
   EXPECT_EQ(count_number_of_valid_placeholders("%.*u"), 2);
 }
 
-TEST(PlaceholderCounting, WithLength) {
+TEST_F(PlaceholderCounting, WithLength) {
   // Valid lengths
   EXPECT_EQ(count_number_of_valid_placeholders("%d %i %u %o %x %X %f %F %e %E %g %G %a %A %c %s %p %n"), 18);
   EXPECT_EQ(count_number_of_valid_placeholders("%hhd %hhi %hhu %hho %hhx %hhX %hhn"), 7);
@@ -73,7 +79,7 @@ TEST(PlaceholderCounting, WithLength) {
   EXPECT_EQ(count_number_of_valid_placeholders("%Ld %Li %Lu %Lo %Lx %LX %Lc %Ls %Lp %Ln"), 0);
 }
 
-TEST(PlaceholderCounting, AllOptionalSpecifications) {
+TEST_F(PlaceholderCounting, AllOptionalSpecifications) {
   EXPECT_EQ(count_number_of_valid_placeholders("%-9.3lld"), 1);
   EXPECT_EQ(count_number_of_valid_placeholders("%+*.3LA"), 2);
   EXPECT_EQ(count_number_of_valid_placeholders("%#1.*hhn"), 2);

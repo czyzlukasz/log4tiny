@@ -3,6 +3,7 @@
 #include <string_view>
 #include <algorithm>
 #include <optional>
+#include <ranges>
 
 namespace log4tiny {
 
@@ -21,7 +22,8 @@ constexpr std::optional<std::string_view> consume_character(const std::string_vi
 
 // Consume character that fits in range first_character <= x <= last_character
 constexpr std::optional<std::string_view>
-consume_character_from_range(const std::string_view &format, const char first_character, const char last_character) {
+consume_character_from_range(const std::string_view &format, const char first_character,
+                             const char last_character) {
   if (*format.cbegin() >= first_character and *format.cbegin() <= last_character) {
     return format.substr(1);
   }
@@ -31,7 +33,8 @@ consume_character_from_range(const std::string_view &format, const char first_ch
 // Consume character if matches any character provided in parameter pack
 template<typename... T>
 requires(std::is_same_v<T, char> and...)
-constexpr std::optional<std::string_view> consume_character_from_set(const std::string_view &format, T... characters) {
+constexpr std::optional<std::string_view>
+consume_character_from_set(const std::string_view &format, T... characters) {
   if (((*format.cbegin() == characters) or ...)) {
     return format.substr(1);
   }
@@ -66,6 +69,7 @@ concept IsCharacterConsumer = requires(T t, const std::string_view &format, cons
 // is achieved
 template<typename Function, typename... Args>
 requires IsCharacterConsumer<Function, Args...>
+
 constexpr std::optional<std::string_view>
 consume_repeatedly(Function function, const std::string_view &format, const Args &... args) {
   while (true) {
@@ -111,45 +115,94 @@ constexpr auto consume_precision_if_any(const std::string_view &format) {
     size_t number_of_additional_arguments;
   };
   if (const auto substring_without_precision_specifier = consume_character(format, '.')) {
-    if (const auto additional_argument_substring = consume_character(substring_without_precision_specifier.value(),
-                                                                     '*')) {
+    if (const auto additional_argument_substring = consume_character(
+            substring_without_precision_specifier.value(),
+            '*')) {
       return ReturnValue{.substring = additional_argument_substring.value(), .number_of_additional_arguments = 1};
     } else if (const auto substring = consume_repeatedly(consume_character_from_range,
-                                                         substring_without_precision_specifier.value(), '0', '9')) {
+                                                         substring_without_precision_specifier.value(), '0',
+                                                         '9')) {
       return ReturnValue{.substring = substring.value(), .number_of_additional_arguments = 0};
     }
   }
   return ReturnValue{.substring = format, .number_of_additional_arguments = 0};
 }
 
+enum class Specifier : char {
+  d = 'd',
+  i = 'i',
+  u = 'u',
+  o = 'o',
+  x = 'x',
+  X = 'X',
+  f = 'f',
+  F = 'F',
+  e = 'e',
+  E = 'E',
+  g = 'g',
+  G = 'G',
+  a = 'a',
+  A = 'A',
+  c = 'c',
+  s = 's',
+  p = 'p',
+  n = 'n'
+};
+
 // Consume length specifier and return information about allowed specifiers that are expected
 constexpr auto consume_length_if_any(const std::string_view &format) {
   struct ReturnValue {
     std::string_view substring;
-    std::string_view allowed_specifiers;
+    std::vector<Specifier> allowed_specifiers;
   };
 
   if (const auto substring = consume_string(format, "hh")) {
-    return ReturnValue{.substring = substring.value(), .allowed_specifiers = "diuoxXn"};
+    return ReturnValue{.substring = substring.value(), .allowed_specifiers = {Specifier::d, Specifier::i, Specifier::u, Specifier::o, Specifier::x,
+                                                                              Specifier::X, Specifier::n}};
   }
   if (const auto substring = consume_string(format, "ll")) {
-    return ReturnValue{.substring = substring.value(), .allowed_specifiers = "diuoxXn"};
+    return ReturnValue{.substring = substring.value(), .allowed_specifiers = {Specifier::d, Specifier::i, Specifier::u, Specifier::o, Specifier::x,
+                                                                              Specifier::X, Specifier::n}};
   }
   if (const auto substring = consume_character(format, 'l')) {
-    return ReturnValue{.substring = substring.value(), .allowed_specifiers = "diuoxXcsn"};
+    return ReturnValue{.substring = substring.value(), .allowed_specifiers = {Specifier::d, Specifier::i, Specifier::u, Specifier::o, Specifier::x,
+                                                                              Specifier::X, Specifier::c, Specifier::s, Specifier::n}};
   }
   if (const auto substring = consume_character(format, 'L')) {
-    return ReturnValue{.substring = substring.value(), .allowed_specifiers = "fFeEgGaA"};
+    return ReturnValue{.substring = substring.value(), .allowed_specifiers = {Specifier::f, Specifier::F, Specifier::e, Specifier::E, Specifier::g,
+                                                                              Specifier::G, Specifier::a, Specifier::A}};
   }
   if (const auto substring = consume_character_from_set(format, 'h', 'j', 'z', 't')) {
-    return ReturnValue{.substring = substring.value(), .allowed_specifiers = "diuoxXn"};
+    return ReturnValue{.substring = substring.value(), .allowed_specifiers = {Specifier::d, Specifier::i, Specifier::u, Specifier::o, Specifier::x,
+                                                                              Specifier::X, Specifier::n}};
   }
-  return ReturnValue{.substring = format, .allowed_specifiers = "diuoxXnfFeEgGaAcspn"};
+  return ReturnValue{.substring = format, .allowed_specifiers = {Specifier::d, Specifier::i, Specifier::u, Specifier::o, Specifier::x, Specifier::X,
+                                                                 Specifier::f, Specifier::F, Specifier::e, Specifier::E, Specifier::g, Specifier::G,
+                                                                 Specifier::a, Specifier::A, Specifier::c, Specifier::s, Specifier::p, Specifier::n}};
 }
 
+constexpr std::vector<char> specifiers_to_characters(const std::vector<Specifier> &specifiers) {
+  std::vector<char> result{};
+  std::ranges::transform(specifiers, std::back_inserter(result), [](const Specifier &specifier) { return static_cast<char>(specifier); });
+  return result;
+}
+
+struct PlaceholderTypeMatcher {
+  template <typename T>
+  bool match(T t) {
+    return false;
+  }
+
+  bool match(int i) {
+    return true;
+  }
+
+};
+
 constexpr std::optional<std::string_view>
-consume_specifier(const std::string_view &format, const std::string_view &allowed_specifiers) {
-  if (consume_character_from_set(format, allowed_specifiers)) {
+consume_specifier(const std::string_view &format, const std::vector<Specifier> &allowed_specifiers) {
+  const auto specifier_characters = specifiers_to_characters(allowed_specifiers);
+  if (consume_character_from_set(format, specifier_characters)) {
     return format.substr(1);
   }
   return std::nullopt;
@@ -157,10 +210,10 @@ consume_specifier(const std::string_view &format, const std::string_view &allowe
 
 // Try to match %[flags][width][.precision][length]specifier prototype and return information about additional arguments
 // required (if needed) as well as length of parsed placeholder
-constexpr auto is_valid_placeholder(const std::string_view &format) {
+constexpr auto parse_first_placeholder(const std::string_view &format) {
   struct ReturnValue {
     bool is_valid;
-    size_t number_of_additional_arguments;
+    std::vector<PlaceholderTypeMatcher> type_matchers;
     long placeholder_length;
   };
 
@@ -170,41 +223,49 @@ constexpr auto is_valid_placeholder(const std::string_view &format) {
       const auto [post_width_substring, width_argument] = consume_width_if_any(post_flags_substring);
       const auto [post_precision_substring, precision_argument] = consume_precision_if_any(
               post_width_substring);
-      const auto [post_length_substring, allowed_specifiers] = consume_length_if_any(post_precision_substring);
-      if (const auto post_specifier_substring = consume_specifier(post_length_substring, allowed_specifiers)) {
+      const auto [post_length_substring, allowed_specifiers] = consume_length_if_any(
+              post_precision_substring);
+      if (const auto post_specifier_substring = consume_specifier(post_length_substring,
+                                                                  allowed_specifiers)) {
         return ReturnValue{.is_valid = true,
-                .number_of_additional_arguments = width_argument + precision_argument,
+                .type_matchers = {PlaceholderTypeMatcher{}},
                 .placeholder_length = std::distance(format.cbegin(), post_specifier_substring->cbegin())};
       }
     }
   }
   catch (const std::exception &exception) {
   }
-  return ReturnValue{.is_valid = false, .number_of_additional_arguments = 0, .placeholder_length = 0};
+  return ReturnValue{.is_valid = false, .type_matchers = {}, .placeholder_length = 0};
+}
+
+constexpr std::string_view skip_escaped_starting_character(const std::string_view &format) {
+  if (format.starts_with("%%") or format.starts_with("\%")) {
+    return format.substr(1);
+  }
+  return format;
 }
 
 // Return number of valid placeholders in given string
-constexpr size_t count_number_of_valid_placeholders(const std::string_view &format, const size_t valid_placeholders = 0,
-                                                    const size_t cursor = 0) {
-  while (cursor < format.size()) {
-    auto substring = format.substr(cursor);
-    // Skip if starting character is escaped
-    if (format.substr(0, cursor).ends_with('%')) {
-      return count_number_of_valid_placeholders(format, valid_placeholders, cursor + 1);
+constexpr std::vector<PlaceholderTypeMatcher> parse_format_to_placeholder_matchers(const std::string_view &format) {
+  std::vector<PlaceholderTypeMatcher> result{};
+
+  auto substring = skip_escaped_starting_character(format);
+  while (not substring.empty()) {
+    if (const auto [is_valid, new_type_matcher, length_of_placeholder] = parse_first_placeholder(substring); is_valid) {
+      std::ranges::move(new_type_matcher, std::back_inserter(result));
+      substring.remove_prefix(length_of_placeholder);
+    } else {
+      substring.remove_prefix(1);
     }
-    if (const auto [is_valid, number_of_additional_arguments, placeholder_length] = is_valid_placeholder(
-              substring); is_valid) {
-      return count_number_of_valid_placeholders(format, valid_placeholders + 1 + number_of_additional_arguments,
-                                                cursor + placeholder_length);
-    }
-    return count_number_of_valid_placeholders(format, valid_placeholders, cursor + 1);
+    substring = skip_escaped_starting_character(substring);
   }
-  return valid_placeholders;
+
+  return result;
 }
 
 template<const std::string_view &format, typename... T>
 constexpr void verify_format_with_arguments(const T &... args) {
-  static_assert(sizeof...(T) == count_number_of_valid_placeholders(format),
+  static_assert(sizeof...(T) == parse_format_to_placeholder_matchers(format).size(),
                 "Number of argument passed does not match the number of placeholders in the format");
 }
 
