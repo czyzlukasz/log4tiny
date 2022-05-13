@@ -3,7 +3,7 @@ project(log4tiny CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_library(log4tiny INTERFACE)
+add_library(log4tiny INTERFACE src/type_matcher.hpp)
 target_include_directories(log4tiny INTERFACE src)
 
 add_executable(log4tiny_example_1 examples/example_1.cpp)
