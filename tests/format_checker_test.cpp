@@ -129,3 +129,19 @@ TEST(PlaceholderMatching, PointerMatching) {
   EXPECT_FALSE(matcher::PointerType{}.matches(float{}));
   EXPECT_FALSE(matcher::PointerType{}.matches(int{}));
 }
+
+TEST(PlaceholderMatching, ParseWidthSpecifier) {
+  const auto result = parse_format_to_placeholder_matchers("%*f");
+  ASSERT_EQ(result.size(), 2);
+  EXPECT_TRUE(result.at(0).matches<unsigned int>());
+  EXPECT_FALSE(result.at(0).matches<float>());
+  EXPECT_FALSE(result.at(0).matches<const char *>());
+}
+
+TEST(PlaceholderMatching, ParsePrecisionSpecifier) {
+  const auto result = parse_format_to_placeholder_matchers("%.*f");
+  ASSERT_EQ(result.size(), 2);
+  EXPECT_TRUE(result.at(0).matches<unsigned int>());
+  EXPECT_FALSE(result.at(0).matches<float>());
+  EXPECT_FALSE(result.at(0).matches<const char *>());
+}
