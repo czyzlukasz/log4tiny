@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <optional>
 #include <ranges>
+#include <type_matcher.hpp>
 
 namespace log4tiny {
 
@@ -96,36 +97,38 @@ constexpr std::string_view consume_flags_if_any(const std::string_view &format) 
 constexpr auto consume_width_if_any(const std::string_view &format) {
   struct ReturnValue {
     std::string_view substring;
-    size_t number_of_additional_arguments;
+    std::optional<matcher::PlaceholderType> width_type_matcher;
   };
 
   if (const auto additional_argument_substring = consume_character(format, '*')) {
-    return ReturnValue{.substring = additional_argument_substring.value(), .number_of_additional_arguments = 1};
+    return ReturnValue{.substring = additional_argument_substring.value(), .width_type_matcher = matcher::PlaceholderType{
+            matcher::UnsignedIntType{}}};
   } else if (const auto substring = consume_repeatedly(consume_character_from_range, format, '0', '9')) {
-    return ReturnValue{.substring = substring.value(), .number_of_additional_arguments = 0};
+    return ReturnValue{.substring = substring.value(), .width_type_matcher = std::nullopt};
 
   }
-  return ReturnValue{.substring = format, .number_of_additional_arguments = 0};
+  return ReturnValue{.substring = format, .width_type_matcher = std::nullopt};
 }
 
 // Consume precision specification and return information about additional argument required (in case of '*')
 constexpr auto consume_precision_if_any(const std::string_view &format) {
   struct ReturnValue {
     std::string_view substring;
-    size_t number_of_additional_arguments;
+    std::optional<matcher::PlaceholderType> precision_type_matcher;
   };
   if (const auto substring_without_precision_specifier = consume_character(format, '.')) {
     if (const auto additional_argument_substring = consume_character(
             substring_without_precision_specifier.value(),
             '*')) {
-      return ReturnValue{.substring = additional_argument_substring.value(), .number_of_additional_arguments = 1};
+      return ReturnValue{.substring = additional_argument_substring.value(), .precision_type_matcher = matcher::PlaceholderType{
+              matcher::UnsignedIntType{}}};
     } else if (const auto substring = consume_repeatedly(consume_character_from_range,
                                                          substring_without_precision_specifier.value(), '0',
                                                          '9')) {
-      return ReturnValue{.substring = substring.value(), .number_of_additional_arguments = 0};
+      return ReturnValue{.substring = substring.value(), .precision_type_matcher = std::nullopt};
     }
   }
-  return ReturnValue{.substring = format, .number_of_additional_arguments = 0};
+  return ReturnValue{.substring = format, .precision_type_matcher = std::nullopt};
 }
 
 enum class Specifier : char {
@@ -187,25 +190,49 @@ constexpr std::vector<char> specifiers_to_characters(const std::vector<Specifier
   return result;
 }
 
-struct PlaceholderTypeMatcher {
-  template <typename T>
-  bool match(T t) {
-    return false;
+constexpr matcher::PlaceholderType specifier_to_placeholder_type_matcher(const char specifier) {
+  switch (specifier) {
+    case 'd':
+    case 'i':
+      return matcher::PlaceholderType{matcher::SignedIntType{}};
+    case 'u':
+    case 'o':
+    case 'x':
+    case 'X':
+      return matcher::PlaceholderType{matcher::UnsignedIntType{}};
+    case 'f':
+    case 'F':
+    case 'e':
+    case 'E':
+    case 'g':
+    case 'G':
+    case 'a':
+    case 'A':
+      return matcher::PlaceholderType{matcher::FloatingType{}};
+    case 'c':
+      return matcher::PlaceholderType{matcher::CharType{}};
+    case 's':
+      return matcher::PlaceholderType{matcher::StringType{}};
+    case 'p':
+      return matcher::PlaceholderType{matcher::PointerType{}};
+    case 'n':
+    default:
+      return matcher::PlaceholderType{};
   }
+}
 
-  bool match(int i) {
-    return true;
-  }
-
-};
-
-constexpr std::optional<std::string_view>
-consume_specifier(const std::string_view &format, const std::vector<Specifier> &allowed_specifiers) {
+// Consume specifier character and return a type matcher that corresponds to consumed specifier
+constexpr auto consume_specifier(const std::string_view &format, const std::vector<Specifier> &allowed_specifiers) {
+  struct Result {
+    std::optional<std::string_view> substring;
+    matcher::PlaceholderType placeholder_type_matcher;
+  };
   const auto specifier_characters = specifiers_to_characters(allowed_specifiers);
   if (consume_character_from_set(format, specifier_characters)) {
-    return format.substr(1);
+    const char specifier_character = format.front();
+    return Result{.substring = format.substr(1), .placeholder_type_matcher = specifier_to_placeholder_type_matcher(specifier_character)};
   }
-  return std::nullopt;
+  return Result{.substring = std::nullopt, .placeholder_type_matcher = matcher::PlaceholderType{}};
 }
 
 // Try to match %[flags][width][.precision][length]specifier prototype and return information about additional arguments
@@ -213,22 +240,30 @@ consume_specifier(const std::string_view &format, const std::vector<Specifier> &
 constexpr auto parse_first_placeholder(const std::string_view &format) {
   struct ReturnValue {
     bool is_valid;
-    std::vector<PlaceholderTypeMatcher> type_matchers;
+    std::vector<matcher::PlaceholderType> type_matchers;
     long placeholder_length;
   };
 
   try {
     if (const auto post_start_substring = consume_start_character(format)) {
+      std::vector<matcher::PlaceholderType> placeholder_type_matchers{};
       const auto post_flags_substring = consume_flags_if_any(post_start_substring.value());
-      const auto [post_width_substring, width_argument] = consume_width_if_any(post_flags_substring);
-      const auto [post_precision_substring, precision_argument] = consume_precision_if_any(
+      const auto [post_width_substring, width_type_matcher] = consume_width_if_any(post_flags_substring);
+      if (width_type_matcher) {
+        placeholder_type_matchers.emplace_back(width_type_matcher.value());
+      }
+      const auto [post_precision_substring, precision_type_matcher] = consume_precision_if_any(
               post_width_substring);
+      if (precision_type_matcher) {
+        placeholder_type_matchers.emplace_back(precision_type_matcher.value());
+      }
       const auto [post_length_substring, allowed_specifiers] = consume_length_if_any(
               post_precision_substring);
-      if (const auto post_specifier_substring = consume_specifier(post_length_substring,
-                                                                  allowed_specifiers)) {
+      if (const auto [post_specifier_substring, specifier_type_matcher] = consume_specifier(post_length_substring,
+                                                                                            allowed_specifiers); post_specifier_substring) {
+        placeholder_type_matchers.emplace_back(specifier_type_matcher);
         return ReturnValue{.is_valid = true,
-                .type_matchers = {PlaceholderTypeMatcher{}},
+                .type_matchers = placeholder_type_matchers,
                 .placeholder_length = std::distance(format.cbegin(), post_specifier_substring->cbegin())};
       }
     }
@@ -239,15 +274,15 @@ constexpr auto parse_first_placeholder(const std::string_view &format) {
 }
 
 constexpr std::string_view skip_escaped_starting_character(const std::string_view &format) {
-  if (format.starts_with("%%") or format.starts_with("\%")) {
-    return format.substr(1);
+  if (format.starts_with("%%")) {
+    return format.substr(2);
   }
   return format;
 }
 
 // Return number of valid placeholders in given string
-constexpr std::vector<PlaceholderTypeMatcher> parse_format_to_placeholder_matchers(const std::string_view &format) {
-  std::vector<PlaceholderTypeMatcher> result{};
+constexpr std::vector<matcher::PlaceholderType> parse_format_to_placeholder_matchers(const std::string_view &format) {
+  std::vector<matcher::PlaceholderType> result{};
 
   auto substring = skip_escaped_starting_character(format);
   while (not substring.empty()) {

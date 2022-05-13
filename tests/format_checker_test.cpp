@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <format_checker.hpp>
+#include <format_parser.hpp>
 
 // Verify proper counting of placeholders in format string. Tests were written based on specification from
 // https://www.cplusplus.com/reference/cstdio/printf/
@@ -9,7 +9,7 @@
 using namespace log4tiny;
 
 struct PlaceholderCounting : testing::Test {
-  constexpr size_t count_number_of_valid_placeholders(const std::string_view& format) {
+  constexpr size_t count_number_of_valid_placeholders(const std::string_view &format) {
     return parse_format_to_placeholder_matchers(format).size();
   }
 };
@@ -84,4 +84,48 @@ TEST_F(PlaceholderCounting, AllOptionalSpecifications) {
   EXPECT_EQ(count_number_of_valid_placeholders("%+*.3LA"), 2);
   EXPECT_EQ(count_number_of_valid_placeholders("%#1.*hhn"), 2);
   EXPECT_EQ(count_number_of_valid_placeholders("%0*.*jo"), 3);
+}
+
+TEST(PlaceholderMatching, UnsignedIntMatching) {
+  EXPECT_TRUE(matcher::UnsignedIntType{}.matches(unsigned{}));
+  EXPECT_TRUE(matcher::UnsignedIntType{}.matches(uint32_t{}));
+  EXPECT_FALSE(matcher::UnsignedIntType{}.matches(int{}));
+  EXPECT_FALSE(matcher::UnsignedIntType{}.matches(float{}));
+}
+
+TEST(PlaceholderMatching, SignedIntMatching) {
+  EXPECT_TRUE(matcher::SignedIntType{}.matches(long{}));
+  EXPECT_TRUE(matcher::SignedIntType{}.matches(int32_t{}));
+  EXPECT_FALSE(matcher::SignedIntType{}.matches(unsigned{}));
+  EXPECT_FALSE(matcher::SignedIntType{}.matches(float{}));
+}
+
+TEST(PlaceholderMatching, FloatMatching) {
+  EXPECT_TRUE(matcher::FloatingType{}.matches(double{}));
+  EXPECT_TRUE(matcher::FloatingType{}.matches(float{}));
+  EXPECT_FALSE(matcher::FloatingType{}.matches(unsigned{}));
+  EXPECT_FALSE(matcher::FloatingType{}.matches(int{}));
+}
+
+TEST(PlaceholderMatching, CharMatching) {
+  EXPECT_TRUE(matcher::CharType{}.matches(char{}));
+  EXPECT_TRUE(matcher::CharType{}.matches((unsigned char) {}));
+  EXPECT_TRUE(matcher::CharType{}.matches(uint8_t{}));
+  EXPECT_FALSE(matcher::CharType{}.matches((const char *) {}));
+  EXPECT_FALSE(matcher::CharType{}.matches(int{}));
+}
+
+TEST(PlaceholderMatching, StringMatching) {
+  EXPECT_TRUE(matcher::StringType{}.matches((const char *) {}));
+  EXPECT_TRUE(matcher::StringType{}.matches(std::string{}));
+  EXPECT_FALSE(matcher::StringType{}.matches(char{}));
+  EXPECT_FALSE(matcher::StringType{}.matches((int *) {}));
+}
+
+TEST(PlaceholderMatching, PointerMatching) {
+  EXPECT_TRUE(matcher::PointerType{}.matches((double *) {}));
+  EXPECT_TRUE(matcher::PointerType{}.matches((const int *const) {}));
+  EXPECT_TRUE(matcher::PointerType{}.matches((const char *) {}));
+  EXPECT_FALSE(matcher::PointerType{}.matches(float{}));
+  EXPECT_FALSE(matcher::PointerType{}.matches(int{}));
 }
