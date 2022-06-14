@@ -145,3 +145,13 @@ TEST(PlaceholderMatching, ParsePrecisionSpecifier) {
   EXPECT_FALSE(result.at(0).matches<float>());
   EXPECT_FALSE(result.at(0).matches<const char *>());
 }
+
+TEST(Devel, Leved) {
+  const auto result = parse_format_to_placeholder_matchers("%*.*f");
+  EXPECT_EQ(result.size(), 3);
+  EXPECT_TRUE(result.at(2).matches<float>());
+  const auto x = result.at(2).get<log4tiny::matcher::FloatingType>();
+  EXPECT_EQ(x.flag.option, matcher::PlaceholderFlag::Option::FORCE_HEX_PREFIX);
+  EXPECT_EQ(x.width, 1);
+  EXPECT_EQ(x.precision, 1);
+}

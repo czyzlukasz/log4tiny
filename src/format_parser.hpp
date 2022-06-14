@@ -259,9 +259,9 @@ constexpr auto parse_first_placeholder(const std::string_view &format) {
       }
       const auto [post_length_substring, allowed_specifiers] = consume_length_if_any(
               post_precision_substring);
-      if (const auto [post_specifier_substring, specifier_type_matcher] = consume_specifier(post_length_substring,
+      if (auto [post_specifier_substring, specifier_type_matcher] = consume_specifier(post_length_substring,
                                                                                             allowed_specifiers); post_specifier_substring) {
-        placeholder_type_matchers.emplace_back(specifier_type_matcher);
+        placeholder_type_matchers.emplace_back(placeholder_with_filled_attributes(std::move(specifier_type_matcher), 'a', 5, 6));
         return ReturnValue{.is_valid = true,
                 .type_matchers = placeholder_type_matchers,
                 .placeholder_length = std::distance(format.cbegin(), post_specifier_substring->cbegin())};
@@ -299,7 +299,7 @@ constexpr std::vector<matcher::PlaceholderType> parse_format_to_placeholder_matc
 }
 
 template<const std::string_view &format, typename... T>
-constexpr void verify_format_with_arguments(const T &... args) {
+consteval void verify_format_with_arguments(const T &... args) {
   static_assert(sizeof...(T) == parse_format_to_placeholder_matchers(format).size(),
                 "Number of argument passed does not match the number of placeholders in the format");
 }
