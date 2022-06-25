@@ -58,7 +58,7 @@ static constexpr const uint32_t crc32_lut[] =
                 0x2D02EF8DU
         };
 
-consteval uint32_t compute_crc32(const char* data, const uint32_t data_length)
+constexpr uint32_t compute_crc32(const char* data, const uint32_t data_length)
 {
   uint32_t crc32 = 0;
   for (uint32_t idx = 0; idx < data_length; ++idx, ++data)
