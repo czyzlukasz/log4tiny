@@ -12,48 +12,48 @@ namespace log4tiny::matcher {
 // This is done by template specialization that returns true only for types that fit given matcher.
 struct SignedIntType {
   template<typename T>
-  constexpr bool matches(T &&t) const {
+  static constexpr bool matches(T &&t) {
     return false;
   }
 
-  constexpr bool matches(std::signed_integral auto &&t) const {
+  static constexpr bool matches(std::signed_integral auto &&t) {
     return true;
   }
 };
 
 struct UnsignedIntType {
   template<typename T>
-  constexpr bool matches(T &&t) const {
+  static constexpr bool matches(T &&t) {
     return false;
   }
 
-  constexpr bool matches(std::unsigned_integral auto &&t) const {
+  static constexpr bool matches(std::unsigned_integral auto &&t) {
     return true;
   }
 };
 
 struct FloatingType {
   template<typename T>
-  constexpr bool matches(T &&t) const {
+  static constexpr bool matches(T &&t) {
     return false;
   }
 
-  constexpr bool matches(std::floating_point auto &&t) const {
+  static constexpr bool matches(std::floating_point auto &&t) {
     return true;
   }
 };
 
 struct CharType {
   template<typename T>
-  constexpr bool matches(T &&t) const {
+  static constexpr bool matches(T &&t) {
     return false;
   }
 
-  constexpr bool matches(char &&t) const {
+  static constexpr bool matches(char &&t) {
     return true;
   }
 
-  constexpr bool matches(unsigned char &&t) const {
+  static constexpr bool matches(unsigned char &&t) {
     return true;
   }
 };
@@ -61,27 +61,27 @@ struct CharType {
 // This matcher provides an extension to C printf - it accepts C const char* as well as C++ std::string
 struct StringType {
   template<typename T>
-  constexpr bool matches(T &&t) const {
+  static constexpr bool matches(T &&t) {
     return false;
   }
 
-  constexpr bool matches(std::string &&t) const {
+  static constexpr bool matches(std::string &&t) {
     return true;
   }
 
-  constexpr bool matches(const char *&&t) const {
+  static constexpr bool matches(const char *&&t) {
     return true;
   }
 };
 
 struct PointerType {
   template<typename T>
-  constexpr bool matches(T &&t) const {
+  static constexpr bool matches(T &&t) {
     return false;
   }
 
   template<typename T>
-  constexpr bool matches(T *&&t) const {
+  static constexpr bool matches(T *&&t) {
     return true;
   }
 };
