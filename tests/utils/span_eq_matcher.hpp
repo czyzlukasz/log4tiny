@@ -4,6 +4,7 @@
 #include <vector>
 #include <ostream>
 #include <span>
+#include <cstddef>
 
 using testing::Matcher;
 
@@ -42,11 +43,7 @@ public:
 private:
   void print_container(std::ostream &os, const auto &container) const {
     for (const auto &item: container) {
-      if constexpr(std::is_unsigned_v<T>) {
-        os << "0x" << std::uppercase << std::hex << unsigned(item) << ", ";
-      } else {
-        os << item << ", ";
-      }
+      os << "0x" << std::uppercase << std::hex << static_cast<unsigned>(item) << ", ";
     }
   }
 

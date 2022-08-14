@@ -7,18 +7,18 @@ namespace log4tiny {
 
 template<typename ByteType>
 struct ValueEncoder {
+
   enum class ValueType : uint8_t {
-    INT8,
-    INT16,
-    INT32,
-    INT64,
     UINT8,
     UINT16,
     UINT32,
     UINT64,
+    INT8,
+    INT16,
+    INT32,
+    INT64,
     FLOAT,
     DOUBLE,
-    BOOL,
     STRING
   };
 
@@ -26,7 +26,11 @@ struct ValueEncoder {
     constexpr auto type_catalog = generate_sorted_type_catalog();
 
     const auto fits_within_the_range_of_type = [&value](const TypeInformation &type_information) -> bool {
-      return value <= type_information.max_possible_value and value >= type_information.min_possible_value;
+      if constexpr(std::is_unsigned_v<decltype(value)>) {
+        return value <= type_information.max_possible_value;
+      } else {
+        return value <= static_cast<int64_t>(type_information.max_possible_value) and value >= type_information.min_possible_value;
+      }
     };
 
     const auto smallest_possible_type = std::ranges::find_if(type_catalog, fits_within_the_range_of_type);
@@ -39,6 +43,16 @@ struct ValueEncoder {
     add_value_to_buffer(value, smallest_possible_type->size_of_encoded_value);
 
     const auto encoded_data_size_with_type_info = smallest_possible_type->size_of_encoded_value + sizeof(ValueType);
+    const auto result = std::span(encoded_data_buffer.cbegin(), encoded_data_buffer.cbegin() + encoded_data_size_with_type_info);
+    data_stream.add_data_to_stream(result);
+    return true;
+  }
+
+  bool encode(DataStream<ByteType> &data_stream, std::floating_point auto &value) {
+    add_type_information_to_buffer(std::is_same_v<std::decay_t<decltype(value)>, float> ? ValueType::FLOAT : ValueType::DOUBLE);
+    add_value_to_buffer(value, sizeof(value));
+
+    const auto encoded_data_size_with_type_info = sizeof(value) + sizeof(ValueType);
     const auto result = std::span(encoded_data_buffer.cbegin(), encoded_data_buffer.cbegin() + encoded_data_size_with_type_info);
     data_stream.add_data_to_stream(result);
     return true;
@@ -101,13 +115,13 @@ private:
   }
 
   void add_type_information_to_buffer(const ValueType &value_type) {
-    encoded_data_buffer.at(0) = static_cast<std::underlying_type_t<ValueType>>(value_type);
+    encoded_data_buffer.at(0) = static_cast<ByteType>(value_type);
   }
 
   template<typename T>
   void add_value_to_buffer(const T &value, const size_t &size_of_encoded_value) {
-    T helper_array[1] = {value};
-    const auto value_span = std::span(helper_array);
+    T helper_array[] = {value};
+    const auto value_span = std::as_bytes(std::span(helper_array));
     std::copy(value_span.begin(), value_span.end(), encoded_data_buffer.begin() + 1);
   }
 
