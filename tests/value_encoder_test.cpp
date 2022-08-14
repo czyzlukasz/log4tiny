@@ -119,3 +119,40 @@ TEST_F(ValueEncoderTest, EncodeBool) {
 
   EXPECT_TRUE(ValueEncoder<std::byte>{}.encode(*data_stream_mock, value_to_encode));
 }
+
+TEST_F(ValueEncoderTest, EncodeStdString) {
+  const std::string value_to_encode = "This is a test string";
+  const auto string_to_vector = [](const std::string &input) -> std::vector<std::byte> {
+    std::vector<std::byte> result;
+    for (const auto &character: input) {
+      result.push_back(static_cast<std::byte>(character));
+    }
+    return result;
+  };
+
+  // Expect a call storing information about value type and length of the string
+  EXPECT_CALL(*data_stream_mock, add_data_to_stream(
+          SpanEq<std::byte>(as_encoded_bytes(uint8_t(ValueEncoder<uint8_t>::ValueType::STRING), uint32_t(value_to_encode.length())))));
+  // Then expect a call with string data
+  EXPECT_CALL(*data_stream_mock, add_data_to_stream(SpanEq<std::byte>(string_to_vector(value_to_encode)))).RetiresOnSaturation();
+
+  EXPECT_TRUE(ValueEncoder<std::byte>{}.encode(*data_stream_mock, value_to_encode));
+}
+
+TEST_F(ValueEncoderTest, EncodeCString) {
+  const char *value_to_encode = "This is a test string";
+  const auto string_to_vector = [](const char *input) -> std::vector<std::byte> {
+    std::vector<std::byte> result;
+    for (size_t it = 0; it < std::strlen(input); ++it) {
+      result.push_back(static_cast<std::byte>(input[it]));
+    }
+    return result;
+  };
+
+  // Check ValueEncoderTest_EncodeStdString for explanation
+  EXPECT_CALL(*data_stream_mock, add_data_to_stream(
+          SpanEq<std::byte>(as_encoded_bytes(uint8_t(ValueEncoder<uint8_t>::ValueType::STRING), uint32_t(std::strlen(value_to_encode))))));
+  EXPECT_CALL(*data_stream_mock, add_data_to_stream(SpanEq<std::byte>(string_to_vector(value_to_encode)))).RetiresOnSaturation();
+
+  EXPECT_TRUE(ValueEncoder<std::byte>{}.encode(*data_stream_mock, value_to_encode));
+}

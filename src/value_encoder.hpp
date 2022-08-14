@@ -2,8 +2,12 @@
 
 #include <data_stream.hpp>
 #include <type_matcher.hpp>
+#include <cstring>
 
 namespace log4tiny {
+
+template<typename T>
+concept String = std::is_same_v<T, std::string> or std::is_same_v<T, char *> or std::is_same_v<T, const char *>;
 
 template<typename ByteType>
 struct ValueEncoder {
@@ -58,6 +62,36 @@ struct ValueEncoder {
     return true;
   }
 
+  bool encode(DataStream<ByteType> &data_stream, const String auto &value) {
+    using T = std::decay_t<decltype(value)>;
+    const uint32_t string_length = [&] {
+      if constexpr(std::is_same_v<T, std::string>) {
+        return value.length();
+      } else {
+        return std::strlen(value);
+      }
+    }();
+    // Store information about type and the length of the string
+    add_type_information_to_buffer(ValueType::STRING);
+    add_value_to_buffer(string_length, sizeof(string_length));
+
+    const auto encoded_length_with_type_info = sizeof(ValueType) + sizeof(string_length);
+    const auto result = std::span(encoded_data_buffer.cbegin(), encoded_data_buffer.cbegin() + encoded_length_with_type_info);
+    data_stream.add_data_to_stream(result);
+
+    const auto string_begin = [&] {
+      if constexpr(std::is_same_v<T, std::string>) {
+        // TODO: think of something smarter than reinterpret cast
+        return reinterpret_cast<const std::byte *>(value.data());
+      } else {
+        return reinterpret_cast<const std::byte *>(value);
+      }
+    }();
+    const auto string_span = std::span(string_begin, string_begin + string_length);
+    data_stream.add_data_to_stream(string_span);
+    return true;
+  }
+
 private:
   struct TypeInformation {
     uint64_t max_possible_value;
@@ -78,7 +112,6 @@ private:
     else if constexpr(std::is_same_v<T, uint64_t>) return ValueType::UINT64;
     else if constexpr(std::is_same_v<T, float>) return ValueType::FLOAT;
     else if constexpr(std::is_same_v<T, double>) return ValueType::DOUBLE;
-    else if constexpr(std::is_same_v<T, bool>) return ValueType::BOOL;
     else {
       []<bool flag = false> { static_assert(flag, "Specified type is not supported"); }();
     }
