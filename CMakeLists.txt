@@ -11,6 +11,6 @@ target_link_libraries(log4tiny_example_1 log4tiny)
 
 find_library(GTest GTest)
 
-add_executable(tests tests/format_checker_test.cpp tests/value_encoder_test.cpp)
+add_executable(tests tests/format_checker_test.cpp tests/value_encoder_test.cpp tests/value_decoder_test.cpp)
 target_link_libraries(tests gtest_main gtest gmock log4tiny)
 target_include_directories(tests PRIVATE tests)
