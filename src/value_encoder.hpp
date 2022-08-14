@@ -5,62 +5,115 @@
 
 namespace log4tiny {
 
+template<typename ByteType>
 struct ValueEncoder {
-  template<typename Matcher, typename T, typename ByteType>
-  static void encode(T &&value, DataStream<ByteType> &data_stream) {
-    if constexpr(std::is_same_v<Matcher, matcher::SignedIntType>) {
-      encode_signed(value, data_stream);
+  enum class ValueType : uint8_t {
+    INT8,
+    INT16,
+    INT32,
+    INT64,
+    UINT8,
+    UINT16,
+    UINT32,
+    UINT64,
+    FLOAT,
+    DOUBLE,
+    BOOL,
+    STRING
+  };
+
+  bool encode(DataStream<ByteType> &data_stream, std::integral auto &value) {
+    constexpr auto type_catalog = generate_sorted_type_catalog();
+
+    const auto fits_within_the_range_of_type = [&value](const TypeInformation &type_information) -> bool {
+      return value <= type_information.max_possible_value and value >= type_information.min_possible_value;
+    };
+
+    const auto smallest_possible_type = std::ranges::find_if(type_catalog, fits_within_the_range_of_type);
+    if (smallest_possible_type == type_catalog.cend()) {
+      // Could not find any supported type that would fit specified value
+      return false;
     }
+
+    add_type_information_to_buffer(smallest_possible_type->value_type);
+    add_value_to_buffer(value, smallest_possible_type->size_of_encoded_value);
+
+    const auto encoded_data_size_with_type_info = smallest_possible_type->size_of_encoded_value + sizeof(ValueType);
+    const auto result = std::span(encoded_data_buffer.cbegin(), encoded_data_buffer.cbegin() + encoded_data_size_with_type_info);
+    data_stream.add_data_to_stream(result);
+    return true;
   }
 
 private:
-  template<typename T, typename ByteType>
-  static void encode_signed(T &&value, DataStream<ByteType> &data_stream) {
-    enum class SignedType : ByteType {
-      INT8 = 0,
-      INT16 = 1,
-      INT32 = 2,
-      INT64 = 3
+  struct TypeInformation {
+    uint64_t max_possible_value;
+    int64_t min_possible_value;
+    ValueType value_type;
+    size_t size_of_encoded_value;
+  };
+
+  template<typename T>
+  static consteval ValueType type_to_value_type() {
+    if constexpr(std::is_same_v<T, int8_t>) return ValueType::INT8;
+    else if constexpr(std::is_same_v<T, int16_t>) return ValueType::INT16;
+    else if constexpr(std::is_same_v<T, int32_t>) return ValueType::INT32;
+    else if constexpr(std::is_same_v<T, int64_t>) return ValueType::INT64;
+    else if constexpr(std::is_same_v<T, uint8_t>) return ValueType::UINT8;
+    else if constexpr(std::is_same_v<T, uint16_t>) return ValueType::UINT16;
+    else if constexpr(std::is_same_v<T, uint32_t>) return ValueType::UINT32;
+    else if constexpr(std::is_same_v<T, uint64_t>) return ValueType::UINT64;
+    else if constexpr(std::is_same_v<T, float>) return ValueType::FLOAT;
+    else if constexpr(std::is_same_v<T, double>) return ValueType::DOUBLE;
+    else if constexpr(std::is_same_v<T, bool>) return ValueType::BOOL;
+    else {
+      []<bool flag = false> { static_assert(flag, "Specified type is not supported"); }();
+    }
+  };
+
+  template<typename T>
+  static constexpr TypeInformation generate_type_information_for() {
+    return TypeInformation{
+            .max_possible_value = std::numeric_limits<T>::max(),
+            .min_possible_value = std::numeric_limits<T>::min(),
+            .value_type = type_to_value_type<T>(),
+            .size_of_encoded_value = sizeof(T) * sizeof(ByteType)
     };
-
-    const auto type_to_enum = [&value]() -> SignedType {
-      if (value <= std::numeric_limits<int8_t>::max() and value >= std::numeric_limits<int8_t>::min()) {
-        return SignedType::INT8;
-      } else if (value <= std::numeric_limits<int16_t>::max() and value >= std::numeric_limits<int16_t>::min()) {
-        return SignedType::INT16;
-      } else if (value <= std::numeric_limits<int32_t>::max() and value >= std::numeric_limits<int32_t>::min()) {
-        return SignedType::INT32;
-      } else if (value <= std::numeric_limits<int64_t>::max() and value >= std::numeric_limits<int64_t>::min()) {
-        return SignedType::INT64;
-      }
-      // TODO: add custom position for encoding integers greater than INT64
-      return SignedType::INT64;
-    };
-
-    const auto get_size_of_data = [](const SignedType &type) -> size_t {
-      switch (type) {
-        case SignedType::INT8:
-          return 1;
-        case SignedType::INT16:
-          return 2;
-        case SignedType::INT32:
-          return 4;
-        case SignedType::INT64:
-          return 8;
-        default:
-          return 0;
-      }
-    };
-
-    const auto data_type = type_to_enum();
-    const auto type_used_for_encoding = std::bit_cast<ByteType>(data_type);
-    const auto encoded_type_used = std::span(&type_used_for_encoding, sizeof(ByteType));
-    data_stream.add_data_to_stream(encoded_type_used);
-
-    const auto data_bits = std::bit_cast<ByteType>(value);
-    const auto data = std::span(&data_bits, get_size_of_data(data_type));
-    data_stream.add_data_to_stream(data);
   }
+
+  static constexpr auto generate_sorted_type_catalog() {
+    std::array type_size_catalog = {
+            generate_type_information_for<int8_t>(),
+            generate_type_information_for<int16_t>(),
+            generate_type_information_for<int32_t>(),
+            generate_type_information_for<int64_t>(),
+            generate_type_information_for<uint8_t>(),
+            generate_type_information_for<uint16_t>(),
+            generate_type_information_for<uint32_t>(),
+            generate_type_information_for<uint64_t>()
+    };
+    std::ranges::sort(type_size_catalog, {}, &TypeInformation::size_of_encoded_value);
+
+    return type_size_catalog;
+  }
+
+  static constexpr auto get_largest_size_of_encoded_value() {
+    return generate_sorted_type_catalog().rbegin()->size_of_encoded_value;
+  }
+
+  void add_type_information_to_buffer(const ValueType &value_type) {
+    encoded_data_buffer.at(0) = static_cast<std::underlying_type_t<ValueType>>(value_type);
+  }
+
+  template<typename T>
+  void add_value_to_buffer(const T &value, const size_t &size_of_encoded_value) {
+    T helper_array[1] = {value};
+    const auto value_span = std::span(helper_array);
+    std::copy(value_span.begin(), value_span.end(), encoded_data_buffer.begin() + 1);
+  }
+
+  // Buffer for data before inserting it into data_stream by encode method. Note that we assume worst case scenario (the largest value that we can encode)
+  // plus additional info for storing the type that we encode. For more info see encode method.
+  static inline std::array<ByteType, sizeof(ValueType) + get_largest_size_of_encoded_value()> encoded_data_buffer;
 };
 
 }

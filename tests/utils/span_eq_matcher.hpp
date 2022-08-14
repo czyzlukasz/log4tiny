@@ -15,13 +15,19 @@ public:
   explicit SpanEqMatcher(std::vector<T> &&expected_data_) : expected_data(std::move(expected_data_)) {}
 
   bool MatchAndExplain(std::span<const T> argument, std::ostream *os) const {
-    if (argument.size() != expected_data.size()) {
-      if (os != nullptr) {
-        *os << "Containers size differ: expected " << expected_data.size() << " items, got " << argument.size() << " instead. Items are:" << std::endl;
-        print_container(*os, argument);
+    const bool are_equal = std::ranges::equal(argument, expected_data);
+    if (os != nullptr) {
+
+      if (argument.size() != expected_data.size()) {
+        *os << "Containers size differ: expected " << expected_data.size() << " items, got " << argument.size() << " instead. Items are:"
+            << std::endl;
+      } else {
+        *os << "Containers differ. Items are:" << std::endl;
       }
+      print_container(*os, argument);
     }
-    return false;
+
+    return are_equal;
   }
 
   void DescribeTo(std::ostream *os) const {
@@ -34,12 +40,11 @@ public:
   void DescribeNegationTo(std::ostream *os) const {}
 
 private:
-  void print_container(std::ostream& os, const auto& container) const {
-    for (const auto &item : container) {
+  void print_container(std::ostream &os, const auto &container) const {
+    for (const auto &item: container) {
       if constexpr(std::is_unsigned_v<T>) {
         os << "0x" << std::uppercase << std::hex << unsigned(item) << ", ";
-      }
-      else {
+      } else {
         os << item << ", ";
       }
     }
