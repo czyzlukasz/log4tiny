@@ -4,10 +4,11 @@
 
 namespace log4tiny {
 
-template <typename BitType>
-struct DataStream {
-  virtual ~DataStream() = default;
-  virtual void add_data_to_stream(std::span<const BitType> data) = 0;
+template<typename T, typename ByteType>
+concept DataStream = requires(T &t, const std::span<const ByteType> &data) {
+  { t.start_log_entry() } -> std::same_as<void>;
+  { t.add_data_to_stream(data) } -> std::same_as<void>;
+  { t.end_log_entry() } -> std::same_as<void>;
 };
 
 }

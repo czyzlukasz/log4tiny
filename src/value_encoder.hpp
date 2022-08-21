@@ -7,7 +7,7 @@
 namespace log4tiny {
 
 template<typename T>
-concept String = std::is_same_v<T, std::string> or std::is_same_v<T, char *> or std::is_same_v<T, const char *>;
+concept String = std::is_convertible_v<T, std::string_view>;
 
 template<typename ByteType>
 struct ValueEncoder {
@@ -26,7 +26,7 @@ struct ValueEncoder {
     STRING
   };
 
-  bool encode(DataStream<ByteType> &data_stream, std::integral auto &value) {
+  bool encode(DataStream<ByteType> auto &data_stream, std::integral auto &value) {
     constexpr auto type_catalog = generate_sorted_type_catalog();
 
     const auto fits_within_the_range_of_type = [&value](const TypeInformation &type_information) -> bool {
@@ -52,7 +52,7 @@ struct ValueEncoder {
     return true;
   }
 
-  bool encode(DataStream<ByteType> &data_stream, std::floating_point auto &value) {
+  bool encode(DataStream<ByteType> auto &data_stream, std::floating_point auto &value) {
     add_type_information_to_buffer(std::is_same_v<std::decay_t<decltype(value)>, float> ? ValueType::FLOAT : ValueType::DOUBLE);
     add_value_to_buffer(value, sizeof(value));
 
@@ -62,15 +62,10 @@ struct ValueEncoder {
     return true;
   }
 
-  bool encode(DataStream<ByteType> &data_stream, const String auto &value) {
-    using T = std::decay_t<decltype(value)>;
-    const uint32_t string_length = [&] {
-      if constexpr(std::is_same_v<T, std::string>) {
-        return value.length();
-      } else {
-        return std::strlen(value);
-      }
-    }();
+  bool encode(DataStream<ByteType> auto &data_stream, const String auto &value) {
+    const std::string_view sv = value;
+    const uint32_t string_length = sv.length();
+
     // Store information about type and the length of the string
     add_type_information_to_buffer(ValueType::STRING);
     add_value_to_buffer(string_length, sizeof(string_length));
@@ -79,14 +74,8 @@ struct ValueEncoder {
     const auto result = std::span(encoded_data_buffer.cbegin(), encoded_data_buffer.cbegin() + encoded_length_with_type_info);
     data_stream.add_data_to_stream(result);
 
-    const auto string_begin = [&] {
-      if constexpr(std::is_same_v<T, std::string>) {
-        // TODO: think of something smarter than reinterpret cast
-        return reinterpret_cast<const std::byte *>(value.data());
-      } else {
-        return reinterpret_cast<const std::byte *>(value);
-      }
-    }();
+    // TODO: thats uglyyy
+    const auto string_begin = reinterpret_cast<const std::byte *>(sv.data());
     const auto string_span = std::span(string_begin, string_begin + string_length);
     data_stream.add_data_to_stream(string_span);
     return true;

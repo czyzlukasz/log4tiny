@@ -9,8 +9,10 @@ using testing::AnyOf;
 
 
 template<typename ByteType>
-struct DataStreamMock : DataStream<ByteType> {
-  MOCK_METHOD(void, add_data_to_stream, (std::span<const ByteType> data), (override));
+struct DataStreamMock {
+  MOCK_METHOD(void, start_log_entry, ());
+  MOCK_METHOD(void, add_data_to_stream, (std::span<const ByteType> data));
+  MOCK_METHOD(void, end_log_entry, ());
 };
 
 struct ValueEncoderTest : testing::Test {
